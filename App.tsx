@@ -36,7 +36,7 @@ import {
   RotateCcw,
   Search,
   LogOut,
-  CloudSync
+  CloudSun
 } from 'lucide-react';
 
 interface UserProfile {
@@ -283,7 +283,7 @@ const App: React.FC = () => {
             <div className="flex flex-col">
               <span className="text-xs font-black uppercase tracking-wider theme-text-p truncate max-w-[100px]">{user.username}</span>
               <span className="text-[8px] font-bold theme-text-s uppercase tracking-widest flex items-center gap-1">
-                <CloudSync size={10} className="text-emerald-500" /> Active Vault
+                <CloudSun size={10} className="text-emerald-500" /> Active Vault
               </span>
             </div>
           </div>
@@ -530,7 +530,7 @@ const App: React.FC = () => {
       )}
       {showImport && <ImportModal onImport={addTrades} onClose={() => setShowImport(false)} accounts={accounts} />}
       {showImageImport && <ImageImportModal onImport={addTrades} onClose={() => setShowImageImport(false)} accounts={accounts} existingTrades={trades} />}
-      {showAddAccount && <AddAccountModal onAdd={addAccount} onClose={() => setShowAddAccount(false)} />}
+      {showAddAccount && <AddAccountModal onAdd(name, type) onClose={() => setShowAddAccount(false)} />}
     </div>
   );
 };
