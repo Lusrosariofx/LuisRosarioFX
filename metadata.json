@@ -1,0 +1,7 @@
+{
+  "name": "TradeTrack Pro",
+  "description": "A professional-grade trading journal for Futures and Forex traders, featuring performance analytics, equity curves, and AI-driven trade insights.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
