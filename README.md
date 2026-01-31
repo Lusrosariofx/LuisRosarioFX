@@ -1,20 +1,33 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# TradeTrack Pro
 
-# Run and deploy your AI Studio app
+TradeTrack Pro is an institutional-grade trading journal and performance analytics platform designed specifically for Futures and Forex traders. It leverages Google Gemini AI to provide deep insights into execution quality and psychological patterns.
 
-This contains everything you need to run your app locally.
+## Features
 
-View your app in AI Studio: https://ai.studio/apps/drive/17fc3z7AlPjk-NAMMOapOMcDcjfTAUDSP
+- **Institutional Terminal Design**: A high-end dark interface optimized for clarity and focus.
+- **Secure Vault Architecture**: User-scoped data storage with full local persistence.
+- **AI Performance Reflection**: Automated trade deconstruction using Gemini 3 Flash.
+- **Visual Import Engine**: Batch process trade screenshots via AI-driven data extraction.
+- **Dynamic Analytics**: Real-time equity curves, win-rate distribution, and profit factor tracking.
+- **Daily Direction Assistant**: AI-powered market structure analysis and directional bias logging.
 
-## Run Locally
+## Tech Stack
 
-**Prerequisites:**  Node.js
+- **Framework**: React 19 (Vite)
+- **Styling**: Tailwind CSS
+- **Icons**: Lucide React
+- **Charts**: Recharts
+- **Intelligence**: Google Gemini API (@google/genai)
 
+## Deployment
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+Deploy directly to **Vercel** or **Netlify**:
+
+1. Connect this repository to Vercel.
+2. Select the **Vite** preset.
+3. Add your `API_KEY` to the environment variables.
+4. Deploy.
+
+## Privacy
+
+Data is stored locally in your browser's secure storage, scoped to your username. We recommend using the **Backup/Restore** feature regularly to maintain your journal history.
