@@ -14,8 +14,6 @@ export enum AccountType {
   JUST_CAPITAL = 'Just Capital'
 }
 
-export type AppTheme = 'dark' | 'light' | 'neon';
-
 export interface Account {
   id: string;
   name: string;

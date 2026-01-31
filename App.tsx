@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { MarketType, TradeSide, Trade, TradeMetrics, Account, DailyDirection, AppTheme } from './types';
+import { MarketType, TradeSide, Trade, TradeMetrics, Account, DailyDirection } from './types';
 import TradeTable from './components/TradeTable';
 import TradeForm from './components/TradeForm';
 import Dashboard from './components/Dashboard';
@@ -35,9 +35,6 @@ import {
   Calendar,
   RotateCcw,
   Search,
-  Sun,
-  Moon,
-  Palette,
   LogOut,
   CloudSync
 } from 'lucide-react';
@@ -58,7 +55,6 @@ const App: React.FC = () => {
   const [accounts, setAccounts] = useState<Account[]>(DEFAULT_ACCOUNTS);
   const [directionHistory, setDirectionHistory] = useState<DailyDirection[]>([]);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'journal' | 'analytics' | 'direction'>('dashboard');
-  const [theme, setTheme] = useState<AppTheme>('dark');
   const [showAddForm, setShowAddForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showImageImport, setShowImageImport] = useState(false);
@@ -78,8 +74,6 @@ const App: React.FC = () => {
     if (savedUser) {
       setUser(JSON.parse(savedUser));
     }
-    const savedTheme = localStorage.getItem('trade_track_pro_theme') as AppTheme;
-    if (savedTheme) setTheme(savedTheme);
   }, []);
 
   // Persistence & Scoped Data Loading
@@ -121,9 +115,7 @@ const App: React.FC = () => {
     localStorage.setItem(`${prefix}_trades`, JSON.stringify(trades));
     localStorage.setItem(`${prefix}_accounts`, JSON.stringify(accounts));
     localStorage.setItem(`${prefix}_directions`, JSON.stringify(directionHistory));
-    localStorage.setItem('trade_track_pro_theme', theme);
-    document.documentElement.setAttribute('data-theme', theme);
-  }, [trades, accounts, directionHistory, theme, user]);
+  }, [trades, accounts, directionHistory, user]);
 
   const handleLogin = (newUser: UserProfile) => {
     setUser(newUser);
@@ -260,7 +252,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen theme-bg-app theme-text-p flex flex-col md:flex-row font-sans transition-colors duration-300">
+    <div className="min-h-screen theme-bg-app theme-text-p flex flex-col md:flex-row font-sans">
       <header className="md:hidden flex items-center justify-between p-4 theme-bg-sidebar border-b theme-border sticky top-0 z-[60]">
         <div className="flex items-center gap-2">
           <TrendingUp className="theme-accent w-6 h-6" />
@@ -312,34 +304,6 @@ const App: React.FC = () => {
         </nav>
 
         <div className="mt-auto space-y-4">
-          <div className="theme-bg-app p-4 rounded-xl border theme-border">
-            <div className="flex justify-between items-center mb-3">
-              <label className="text-[10px] theme-text-s uppercase font-black flex items-center gap-2 tracking-wider">
-                <Palette size={12} /> Themes
-              </label>
-            </div>
-            <div className="flex gap-2">
-              <button 
-                onClick={() => setTheme('dark')}
-                className={`flex-1 p-2 rounded-lg border flex justify-center transition-all ${theme === 'dark' ? 'theme-bg-accent text-white border-transparent' : 'theme-bg-sidebar theme-border theme-text-s hover:theme-text-p'}`}
-              >
-                <Moon size={16} />
-              </button>
-              <button 
-                onClick={() => setTheme('light')}
-                className={`flex-1 p-2 rounded-lg border flex justify-center transition-all ${theme === 'light' ? 'theme-bg-accent text-white border-transparent' : 'theme-bg-sidebar theme-border theme-text-s hover:theme-text-p'}`}
-              >
-                <Sun size={16} />
-              </button>
-              <button 
-                onClick={() => setTheme('neon')}
-                className={`flex-1 p-2 rounded-lg border flex justify-center transition-all ${theme === 'neon' ? 'theme-bg-accent text-white border-transparent' : 'theme-bg-sidebar theme-border theme-text-s hover:theme-text-p'}`}
-              >
-                <Zap size={16} />
-              </button>
-            </div>
-          </div>
-
           <div className="theme-bg-app p-4 rounded-xl border theme-border">
             <div className="flex justify-between items-center mb-3">
               <label className="text-[10px] theme-text-s uppercase font-black flex items-center gap-2 tracking-wider">
