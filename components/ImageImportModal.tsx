@@ -1,25 +1,27 @@
 
 import React, { useState } from 'react';
-import { Image as ImageIcon, Sparkles, X, Check, Loader2, AlertCircle, Shield, User, Files, Trash2, CheckCircle2, CreditCard } from 'lucide-react';
+import { Image as ImageIcon, Sparkles, X, Check, Loader2, AlertCircle, Shield, User, Files, Trash2, CheckCircle2, CreditCard, CopyX } from 'lucide-react';
 import { analyzeTradeImage } from '../services/geminiService';
 import { Trade, Account, MarketType } from '../types';
-
-interface ImageImportModalProps {
-  onImport: (trades: Trade[]) => void;
-  onClose: () => void;
-  accounts: Account[];
-}
 
 interface ImageTask {
   id: string;
   file: File;
   preview: string;
   status: 'pending' | 'processing' | 'completed' | 'error';
-  extractedData?: Partial<Trade>;
+  extractedData?: Partial<Trade>[];
+  duplicateCount?: number;
   error?: string;
 }
 
-const ImageImportModal: React.FC<ImageImportModalProps> = ({ onImport, onClose, accounts }) => {
+interface ImageImportModalProps {
+  onImport: (trades: Trade[]) => void;
+  onClose: () => void;
+  accounts: Account[];
+  existingTrades: Trade[];
+}
+
+const ImageImportModal: React.FC<ImageImportModalProps> = ({ onImport, onClose, accounts, existingTrades }) => {
   const [tasks, setTasks] = useState<ImageTask[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
@@ -45,6 +47,17 @@ const ImageImportModal: React.FC<ImageImportModalProps> = ({ onImport, onClose, 
     });
   };
 
+  // Helper to check if a trade is a duplicate
+  const checkDuplicate = (newTrade: Partial<Trade>, pool: Trade[]) => {
+    return pool.some(t => 
+      t.date === newTrade.date && 
+      t.instrument === newTrade.instrument && 
+      t.side === newTrade.side && 
+      Math.abs(t.pnl - (newTrade.pnl || 0)) < 0.01 &&
+      Math.abs(t.entryPrice - (newTrade.entryPrice || 0)) < 0.001
+    );
+  };
+
   const processAll = async () => {
     if (!selectedAccount || tasks.length === 0) return;
     
@@ -65,10 +78,14 @@ const ImageImportModal: React.FC<ImageImportModalProps> = ({ onImport, onClose, 
         const base64 = await base64Promise;
         const data = await analyzeTradeImage(base64);
 
+        // Count how many trades in this specific image are already in the journal
+        const dupCount = data.filter(d => checkDuplicate(d, existingTrades)).length;
+
         setTasks(prev => prev.map(t => t.id === task.id ? { 
           ...t, 
           status: 'completed', 
-          extractedData: data 
+          extractedData: data,
+          duplicateCount: dupCount
         } : t));
       } catch (err: any) {
         setTasks(prev => prev.map(t => t.id === task.id ? { 
@@ -84,30 +101,67 @@ const ImageImportModal: React.FC<ImageImportModalProps> = ({ onImport, onClose, 
   const confirmImport = () => {
     if (!selectedAccount) return;
     
-    const successfulTrades: Trade[] = tasks
-      .filter(t => t.status === 'completed' && t.extractedData)
-      .map(t => ({
-        id: crypto.randomUUID(),
-        date: t.extractedData!.date || new Date().toISOString().split('T')[0],
-        instrument: t.extractedData!.instrument || 'Unknown',
-        marketType: t.extractedData!.marketType || (t.extractedData!.instrument?.length! > 5 ? MarketType.FOREX : MarketType.FUTURES),
-        accountType: selectedAccount,
-        side: t.extractedData!.side as any,
-        entryPrice: t.extractedData!.entryPrice || 0,
-        exitPrice: t.extractedData!.exitPrice || 0,
-        size: t.extractedData!.size || 1,
-        pnl: t.extractedData!.pnl || 0,
-        screenshot: t.preview, 
-        notes: "Batch AI Import"
-      }));
+    const allSuccessfulTrades: Trade[] = [];
 
-    if (successfulTrades.length > 0) {
-      onImport(successfulTrades);
+    tasks
+      .filter(t => t.status === 'completed' && t.extractedData)
+      .forEach(task => {
+        const tradesFromImage = (task.extractedData || []).map(extracted => ({
+          id: crypto.randomUUID(),
+          date: extracted.date || new Date().toISOString().split('T')[0],
+          instrument: extracted.instrument || 'Unknown',
+          marketType: extracted.marketType || (extracted.instrument?.length! > 5 ? MarketType.FOREX : MarketType.FUTURES),
+          accountType: selectedAccount,
+          side: extracted.side as any,
+          entryPrice: extracted.entryPrice || 0,
+          exitPrice: extracted.exitPrice || 0,
+          size: extracted.size || 1,
+          pnl: extracted.pnl || 0,
+          screenshot: task.preview, 
+          notes: "Batch AI Import"
+        }));
+
+        // Filter: Only add trades that are not in the global journal AND not already in this batch
+        tradesFromImage.forEach(t => {
+          const isGlobalDup = checkDuplicate(t, existingTrades);
+          const isBatchDup = checkDuplicate(t, allSuccessfulTrades);
+          
+          if (!isGlobalDup && !isBatchDup) {
+            allSuccessfulTrades.push(t);
+          }
+        });
+      });
+
+    if (allSuccessfulTrades.length > 0) {
+      onImport(allSuccessfulTrades);
+    } else {
+      alert("No new unique trades were found in these screenshots.");
+      onClose();
     }
   };
 
   const allCompleted = tasks.length > 0 && tasks.every(t => t.status === 'completed' || t.status === 'error');
   const someSuccess = tasks.some(t => t.status === 'completed');
+  
+  // Calculate total number of NEW unique trades found across all images
+  const getNewTradeCount = () => {
+    const batchSet = new Set<string>();
+    let count = 0;
+    tasks.filter(t => t.status === 'completed' && t.extractedData).forEach(task => {
+      task.extractedData?.forEach(d => {
+        const fingerprint = `${d.date}-${d.instrument}-${d.side}-${d.pnl}-${d.entryPrice}`;
+        const isGlobalDup = checkDuplicate(d, existingTrades);
+        if (!isGlobalDup && !batchSet.has(fingerprint)) {
+          batchSet.add(fingerprint);
+          count++;
+        }
+      });
+    });
+    return count;
+  };
+
+  const totalNewCount = getNewTradeCount();
+  const totalDupsFound = tasks.reduce((acc, t) => acc + (t.duplicateCount || 0), 0);
 
   return (
     <div className="fixed inset-0 bg-black/95 backdrop-blur-md z-[110] flex items-center justify-center p-4">
@@ -134,7 +188,7 @@ const ImageImportModal: React.FC<ImageImportModalProps> = ({ onImport, onClose, 
                   <ImageIcon className="text-gray-400" size={40} />
                 </div>
                 <h4 className="text-lg font-bold text-gray-300">Drop Screenshots Here</h4>
-                <p className="text-xs text-gray-500 mt-2 text-center max-w-[250px]">Select multiple files. AI will extract instrument, P/L and date automatically.</p>
+                <p className="text-xs text-gray-500 mt-2 text-center max-w-[250px]">Select multiple files. AI will extract EVERY visible trade execution and auto-skip duplicates.</p>
                 <input type="file" multiple className="hidden" accept="image/*" onChange={(e) => handleFiles(e.target.files)} />
               </label>
             ) : (
@@ -165,14 +219,18 @@ const ImageImportModal: React.FC<ImageImportModalProps> = ({ onImport, onClose, 
                         )}
                       </div>
                       
-                      <div className="mt-1">
+                      <div className="mt-1 flex flex-wrap gap-2">
                         {task.status === 'completed' && task.extractedData ? (
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-white">{task.extractedData.instrument}</span>
-                            <span className={`text-[10px] font-black ${task.extractedData.pnl! >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                              {task.extractedData.pnl! >= 0 ? '+' : ''}${task.extractedData.pnl?.toFixed(2)}
+                          <>
+                            <span className="text-[10px] font-black uppercase text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">
+                              {task.extractedData.length} Identified
                             </span>
-                          </div>
+                            {task.duplicateCount! > 0 && (
+                              <span className="text-[10px] font-black uppercase text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded flex items-center gap-1">
+                                <CopyX size={10} /> {task.duplicateCount} Dups
+                              </span>
+                            )}
+                          </>
                         ) : task.status === 'error' ? (
                           <span className="text-[9px] text-rose-500 font-bold">{task.error}</span>
                         ) : (
@@ -209,7 +267,7 @@ const ImageImportModal: React.FC<ImageImportModalProps> = ({ onImport, onClose, 
                 <span className="bg-indigo-600 text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-full">1</span>
                 <label className="text-[10px] uppercase font-black text-gray-500 tracking-[0.2em]">Target Account</label>
               </div>
-              <div className="grid grid-cols-1 gap-2 max-h-[240px] overflow-y-auto custom-scrollbar pr-1">
+              <div className="grid grid-cols-1 gap-2 max-h-[200px] overflow-y-auto custom-scrollbar pr-1">
                 {accounts.map(acc => (
                   <button
                     key={acc.id}
@@ -236,21 +294,21 @@ const ImageImportModal: React.FC<ImageImportModalProps> = ({ onImport, onClose, 
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <span className="bg-indigo-600 text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-full">2</span>
-                <label className="text-[10px] uppercase font-black text-gray-500 tracking-[0.2em]">Summary</label>
+                <label className="text-[10px] uppercase font-black text-gray-500 tracking-[0.2em]">Validation Summary</label>
               </div>
               
-              <div className="bg-black/40 border border-[#222] rounded-2xl p-6 space-y-3">
+              <div className="bg-black/40 border border-[#222] rounded-2xl p-6 space-y-3 shadow-inner">
                 <div className="flex justify-between items-center pb-2 border-b border-[#222]">
-                  <span className="text-[10px] font-black text-gray-500 uppercase">Batch Size</span>
-                  <span className="text-sm font-black text-white">{tasks.length}</span>
+                  <span className="text-[10px] font-black text-gray-500 uppercase">Image Batch</span>
+                  <span className="text-sm font-black text-white">{tasks.length} Files</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-[10px] font-bold text-emerald-500 uppercase">Processed</span>
-                  <span className="text-xs font-black text-emerald-400">{tasks.filter(t => t.status === 'completed').length}</span>
+                  <span className="text-[10px] font-bold text-amber-500 uppercase">Existing Duplicates</span>
+                  <span className="text-sm font-black text-amber-500">{totalDupsFound}</span>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-[10px] font-bold text-rose-500 uppercase">Failed</span>
-                  <span className="text-xs font-black text-rose-400">{tasks.filter(t => t.status === 'error').length}</span>
+                <div className="flex justify-between items-center pt-2 border-t border-[#222]">
+                  <span className="text-[10px] font-black text-emerald-500 uppercase">New Trades Found</span>
+                  <span className="text-sm font-black text-emerald-400">{totalNewCount}</span>
                 </div>
               </div>
             </div>
@@ -264,16 +322,16 @@ const ImageImportModal: React.FC<ImageImportModalProps> = ({ onImport, onClose, 
                 className="w-full py-5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-20 text-white rounded-[1.5rem] font-black text-xs uppercase tracking-[0.2em] shadow-xl shadow-indigo-600/30 flex items-center justify-center gap-3 transition-all active:scale-95"
               >
                 {loading ? <Loader2 className="animate-spin" size={18} /> : <Sparkles size={18} />}
-                {loading ? 'Analyzing...' : 'Start Extraction'}
+                {loading ? 'Analyzing Screenshots...' : 'Start Extraction'}
               </button>
             ) : (
               <button 
-                disabled={!someSuccess}
+                disabled={totalNewCount === 0}
                 onClick={confirmImport}
                 className="w-full py-5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-20 text-white rounded-[1.5rem] font-black text-xs uppercase tracking-[0.2em] shadow-xl shadow-emerald-600/30 flex items-center justify-center gap-3 transition-all active:scale-95"
               >
                 <CheckCircle2 size={18} />
-                Confirm {tasks.filter(t => t.status === 'completed').length} Trades
+                Log {totalNewCount} New Trade{totalNewCount !== 1 ? 's' : ''}
               </button>
             )}
             

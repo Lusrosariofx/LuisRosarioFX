@@ -1,8 +1,8 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { Trade, MarketType, TradeSide } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || 'FAKE_API_KEY_FOR_DEVELOPMENT' });
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const analyzeTrades = async (trades: Trade[]): Promise<string> => {
   if (trades.length === 0) return "Add some trades to get AI-powered insights!";
@@ -17,71 +17,102 @@ export const analyzeTrades = async (trades: Trade[]): Promise<string> => {
   }));
 
   const prompt = `Analyze the following trading history. 
-  I track both "Personal Capital" and "Sim Funded" accounts. 
-  Contrast the performance between these two account types.
+  Contrast the performance between different account types.
   
-  Recent Trades: ${JSON.stringify(tradeSummary.slice(-15))}
+  Recent Trades: ${JSON.stringify(tradeSummary.slice(-20))}
   
   Provide a concise summary with sections for 'Comparative Insights', 'Psychological Patterns', and 'Actionable Fixes'. Use professional trading terminology.`;
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-3-flash-preview',
       contents: prompt,
       config: {
-        systemInstruction: "You are an elite institutional performance manager specializing in retail trader data analysis.",
-        temperature: 0.7,
+        systemInstruction: "You are an elite institutional performance manager specializing in retail trader data analysis. Be concise and direct.",
+        temperature: 0.5,
       },
     });
 
     return response.text || "Could not generate analysis.";
-  } catch (error) {
+  } catch (error: any) {
     console.error("Gemini analysis error:", error);
-    return "Error generating AI analysis.";
+    if (error.message?.includes('429')) {
+      return "Quota Exceeded: The AI is busy. Please wait 1-2 minutes and try 'Refresh Analysis' again.";
+    }
+    return "Error generating AI analysis. Please try again later.";
   }
 };
 
-export const analyzeTradeImage = async (base64Image: string): Promise<Partial<Trade>> => {
+export const generateSpeech = async (text: string): Promise<string | undefined> => {
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash-preview-tts",
+      contents: [{ parts: [{ text: `Read the following trading performance analysis in a professional, steady voice: ${text}` }] }],
+      config: {
+        responseModalities: [Modality.AUDIO],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName: 'Zephyr' }, // Professional/Institutional tone
+          },
+        },
+      },
+    });
+
+    return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+  } catch (error) {
+    console.error("TTS Generation error:", error);
+    return undefined;
+  }
+};
+
+export const analyzeTradeImage = async (base64Image: string): Promise<Partial<Trade>[]> => {
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: [
-        {
-          inlineData: {
-            mimeType: "image/jpeg",
-            data: base64Image.split(',')[1] || base64Image,
+      contents: {
+        parts: [
+          {
+            inlineData: {
+              mimeType: "image/jpeg",
+              data: base64Image.split(',')[1] || base64Image,
+            },
           },
-        },
-        {
-          text: "Extract all trade details from this screenshot. Identify the instrument (e.g. NQ, ES, EURUSD), side (Long/Short), quantity/size, entry price, exit price, and total profit or loss. Format the date strictly as YYYY-MM-DD. If multiple trades are visible, extract the most prominent or summarized one.",
-        }
-      ],
+          {
+            text: "Extract EVERY individual trade execution visible in this screenshot. Look for tables, lists, or history logs. For each trade identified, extract the instrument, side (Long/Short), quantity, entry price, exit price, and total profit or loss. Format all dates strictly as YYYY-MM-DD.",
+          }
+        ]
+      },
       config: {
         responseMimeType: "application/json",
         responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            instrument: { type: Type.STRING },
-            side: { type: Type.STRING, enum: ["Long", "Short"] },
-            entryPrice: { type: Type.NUMBER },
-            exitPrice: { type: Type.NUMBER },
-            size: { type: Type.NUMBER },
-            pnl: { type: Type.NUMBER },
-            date: { type: Type.STRING, description: "YYYY-MM-DD format" },
-          },
-          required: ["instrument", "pnl", "side", "date"]
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              instrument: { type: Type.STRING },
+              side: { type: Type.STRING, enum: ["Long", "Short"] },
+              entryPrice: { type: Type.NUMBER },
+              exitPrice: { type: Type.NUMBER },
+              size: { type: Type.NUMBER },
+              pnl: { type: Type.NUMBER },
+              date: { type: Type.STRING, description: "YYYY-MM-DD format" },
+            },
+            required: ["instrument", "pnl", "side", "date"]
+          }
         }
       }
     });
 
-    const result = JSON.parse(response.text || "{}");
-    return {
+    const results = JSON.parse(response.text || "[]");
+    if (!Array.isArray(results)) return [];
+
+    return results.map(result => ({
       ...result,
       marketType: (result.instrument?.length > 5 || result.instrument?.includes('/')) ? MarketType.FOREX : MarketType.FUTURES
-    };
-  } catch (error) {
+    }));
+  } catch (error: any) {
     console.error("Image analysis error:", error);
-    throw new Error("Failed to read trade from image. Please ensure the date and profit/loss are clearly visible.");
+    throw new Error(error.message?.includes('429') ? "AI Rate limit reached. Try again in 60s." : "Failed to read trade image.");
   }
 };
 
@@ -95,18 +126,20 @@ export interface ChartAnalysisResult {
 export const analyzeDirectionBias = async (base64Image: string): Promise<ChartAnalysisResult> => {
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
-      contents: [
-        {
-          inlineData: {
-            mimeType: "image/jpeg",
-            data: base64Image.split(',')[1] || base64Image,
+      model: 'gemini-3-flash-preview',
+      contents: {
+        parts: [
+          {
+            inlineData: {
+              mimeType: "image/jpeg",
+              data: base64Image.split(',')[1] || base64Image,
+            },
           },
-        },
-        {
-          text: "Act as a professional senior technical analyst. Analyze this chart screenshot (likely from TradingView). Determine the 'Direction for the Day' (Bullish, Bearish, or Neutral). Identify key support/resistance levels, trend structures, and price action signals. Provide a concise professional reasoning and a confidence score from 1-10.",
-        }
-      ],
+          {
+            text: "Act as a professional technical analyst. Analyze this chart. Determine the bias (Bullish, Bearish, or Neutral). Identify key levels and reasoning. Confidence score 1-10.",
+          }
+        ]
+      },
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -115,11 +148,7 @@ export const analyzeDirectionBias = async (base64Image: string): Promise<ChartAn
             bias: { type: Type.STRING, enum: ["Bullish", "Bearish", "Neutral"] },
             confidence: { type: Type.NUMBER },
             reasoning: { type: Type.STRING },
-            keyLevels: { 
-              type: Type.ARRAY, 
-              items: { type: Type.STRING },
-              description: "Important price levels to watch"
-            },
+            keyLevels: { type: Type.ARRAY, items: { type: Type.STRING } },
           },
           required: ["bias", "confidence", "reasoning", "keyLevels"]
         }
@@ -127,8 +156,8 @@ export const analyzeDirectionBias = async (base64Image: string): Promise<ChartAn
     });
 
     return JSON.parse(response.text || "{}");
-  } catch (error) {
+  } catch (error: any) {
     console.error("Chart bias analysis error:", error);
-    throw new Error("Failed to analyze chart bias. Please ensure the chart candles and levels are visible.");
+    throw new Error(error.message?.includes('429') ? "AI Rate limit reached. Please wait a minute." : "Failed to analyze chart bias.");
   }
 };

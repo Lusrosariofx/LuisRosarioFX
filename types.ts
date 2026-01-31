@@ -9,11 +9,12 @@ export enum TradeSide {
   SHORT = 'Short'
 }
 
-/* Added AccountType enum for standardized account identification across services */
 export enum AccountType {
   PERSONAL_CAPITAL = 'Personal Capital',
   JUST_CAPITAL = 'Just Capital'
 }
+
+export type AppTheme = 'dark' | 'light' | 'neon';
 
 export interface Account {
   id: string;
@@ -22,19 +23,29 @@ export interface Account {
   description?: string;
 }
 
+export interface DailyDirection {
+  id: string;
+  date: string;
+  bias: 'Bullish' | 'Bearish' | 'Neutral';
+  confidence: number;
+  reasoning: string;
+  keyLevels: string[];
+  screenshot?: string;
+}
+
 export interface Trade {
   id: string;
   date: string;
   instrument: string;
   marketType: MarketType;
-  accountType: string; // Changed from enum to string for dynamic support
+  accountType: string;
   side: TradeSide;
   entryPrice: number;
   exitPrice: number;
   size: number;
   pnl: number;
   notes?: string;
-  screenshot?: string; // Base64 image data
+  screenshot?: string;
 }
 
 export interface TradeMetrics {

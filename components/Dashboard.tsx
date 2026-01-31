@@ -2,7 +2,7 @@
 import React from 'react';
 import { TradeMetrics, Trade, Account } from '../types';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { Percent, TrendingUp, Shield, Wallet, Activity } from 'lucide-react';
+import { DollarSign, Percent, TrendingUp, Shield, User, Wallet, Activity } from 'lucide-react';
 
 interface DashboardProps {
   metrics: TradeMetrics;
@@ -37,11 +37,11 @@ const Dashboard: React.FC<DashboardProps> = ({ metrics, trades, allTrades, accou
   const COLORS = ['#6366f1', '#f59e0b', '#10b981', '#f43f5e', '#8b5cf6', '#ec4899'];
 
   return (
-    <div className="space-y-12 max-w-7xl mx-auto pb-12">
+    <div className="space-y-8 max-w-7xl mx-auto">
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-black tracking-tight uppercase">Trading Dashboard</h2>
-          <p className="text-gray-400 text-sm">Professional real-time performance tracking.</p>
+          <h2 className="text-2xl font-black tracking-tight">Active Performance</h2>
+          <p className="text-gray-400 text-sm">Aggregated multi-account tracking data.</p>
         </div>
         <div className="flex items-center gap-2 bg-[#111] border border-[#222] p-1.5 rounded-2xl">
           <div className="px-4 py-1.5 flex flex-col items-center">

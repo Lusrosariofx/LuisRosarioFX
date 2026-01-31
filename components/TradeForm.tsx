@@ -1,6 +1,7 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { MarketType, TradeSide, Trade, Account } from '../types';
+import { ImageIcon, X, Upload } from 'lucide-react';
 
 interface TradeFormProps {
   onSubmit: (trade: Trade) => void;
@@ -19,12 +20,26 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSubmit, onCancel, accounts }) =
     exitPrice: '',
     size: '',
     pnl: '',
-    notes: ''
+    notes: '',
+    screenshot: ''
   });
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setFormData(prev => ({ ...prev, screenshot: event.target?.result as string }));
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const calculatePnL = () => {
@@ -57,7 +72,8 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSubmit, onCancel, accounts }) =
       exitPrice: parseFloat(formData.exitPrice),
       size: parseFloat(formData.size) || 1,
       pnl: parseFloat(formData.pnl),
-      notes: formData.notes
+      notes: formData.notes,
+      screenshot: formData.screenshot
     };
 
     onSubmit(trade);
@@ -204,16 +220,50 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSubmit, onCancel, accounts }) =
         />
       </div>
 
-      <div className="flex flex-col gap-1">
-        <label className="text-sm text-gray-400 font-medium">Execution Notes</label>
-        <textarea 
-          name="notes" 
-          rows={3}
-          value={formData.notes} 
-          onChange={handleChange}
-          placeholder="Emotion state, execution quality..."
-          className="bg-[#1a1a1a] border border-[#333] rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
-        />
+      <div className="space-y-4">
+        <div className="flex flex-col gap-1">
+          <label className="text-sm text-gray-400 font-medium">Execution Notes</label>
+          <textarea 
+            name="notes" 
+            rows={3}
+            value={formData.notes} 
+            onChange={handleChange}
+            placeholder="Emotion state, execution quality..."
+            className="bg-[#1a1a1a] border border-[#333] rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <label className="text-sm text-gray-400 font-medium">Trade Screenshot (Optional)</label>
+          {formData.screenshot ? (
+            <div className="relative aspect-video rounded-xl overflow-hidden border border-[#333] bg-black">
+              <img src={formData.screenshot} className="w-full h-full object-contain" alt="Preview" />
+              <button 
+                type="button" 
+                onClick={() => setFormData(prev => ({ ...prev, screenshot: '' }))}
+                className="absolute top-2 right-2 p-1.5 bg-rose-500 text-white rounded-full hover:bg-rose-600 transition-colors shadow-lg"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="flex flex-col items-center justify-center gap-2 p-6 bg-[#1a1a1a] border border-[#333] border-dashed rounded-xl hover:border-indigo-500/50 hover:bg-indigo-500/5 transition-all text-gray-500 hover:text-indigo-400"
+            >
+              <Upload size={20} />
+              <span className="text-[10px] font-black uppercase tracking-widest">Upload Chart Screenshot</span>
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                className="hidden" 
+                accept="image/*" 
+                onChange={handleImageUpload} 
+              />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex gap-4 pt-2">
