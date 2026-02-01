@@ -112,7 +112,8 @@ const App: React.FC = () => {
     const loadedReflections = savedReflections ? JSON.parse(savedReflections) : [];
 
     setTrades(loadedTrades);
-    setAccounts(loadedAccounts.length > 0 ? loadedAccounts : DEFAULT_ACCOUNTS);
+    // FIX: Allow empty accounts list if it was explicitly cleared
+    setAccounts(loadedAccounts);
     setDirectionHistory(loadedHistory);
     setReflections(loadedReflections);
     
@@ -245,6 +246,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen theme-bg-app theme-text-p flex flex-col md:flex-row font-sans">
+      {/* Mobile Header */}
       <header className="md:hidden flex items-center justify-between p-4 theme-bg-sidebar border-b theme-border sticky top-0 z-[60]">
         <div className="flex items-center gap-2">
           <TrendingUp className="theme-accent w-6 h-6" />
@@ -255,6 +257,7 @@ const App: React.FC = () => {
         </button>
       </header>
 
+      {/* Sidebar */}
       <aside className={`fixed inset-0 z-[55] md:relative md:flex w-full md:w-72 theme-bg-sidebar border-r theme-border p-6 flex flex-col gap-8 transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
         <div className="flex flex-col gap-1 select-none">
           <div className="flex items-center gap-3">
@@ -330,17 +333,20 @@ const App: React.FC = () => {
             </button>
           </div>
 
-          <div className="pt-2 flex flex-col gap-3 border-t theme-border">
-             <div className="flex items-center justify-between">
-               <button onClick={toggleLang} className="text-[10px] theme-text-s hover:theme-accent font-black uppercase tracking-widest flex items-center gap-1.5 transition-colors">
-                 <Languages size={12} /> {lang === 'en' ? 'ES' : 'EN'}
+          <div className="pt-4 flex flex-col gap-4 border-t theme-border">
+             <div className="flex items-center justify-between px-1">
+               <button onClick={toggleLang} className="text-[10px] theme-text-s hover:theme-accent font-black uppercase tracking-[0.15em] flex items-center gap-2 transition-all group">
+                 <div className="p-1.5 bg-black/40 rounded-lg group-hover:bg-indigo-500/10 transition-colors">
+                   <Languages size={14} className="group-hover:theme-accent" />
+                 </div>
+                 {lang === 'en' ? 'English' : 'Español'}
                </button>
-               <div className="flex items-center gap-2 px-1">
+               <div className="flex items-center gap-2">
                  <CheckCircle2 size={10} className="text-emerald-500" />
                  <span className="text-[8px] font-black uppercase tracking-widest theme-text-s">{t.persistence_active}</span>
                </div>
              </div>
-             <div className="flex items-center justify-between">
+             <div className="flex items-center justify-between px-1">
                <button onClick={() => {}} className="text-[10px] theme-text-s hover:theme-accent font-black uppercase tracking-widest flex items-center gap-1.5 transition-colors">
                  <Download size={12} /> {t.backup}
                </button>
@@ -514,7 +520,7 @@ const FilterButton: React.FC<{ active: boolean, onClick: () => void, onDelete?: 
       <span className="truncate tracking-wide">{label}</span>
       {active && <Target size={10} className="shrink-0 theme-accent" />}
     </button>
-    {onDelete && <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="p-2 opacity-0 group-hover:opacity-100 hover:bg-rose-500/20 theme-text-s hover:text-rose-500 transition-all border-l border-transparent group-hover:theme-border"><Trash2 size={12} /></button>}
+    {onDelete && <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="p-2 opacity-40 group-hover:opacity-100 hover:bg-rose-500/20 theme-text-s hover:text-rose-500 transition-all border-l border-transparent group-hover:theme-border"><Trash2 size={12} /></button>}
   </div>
 );
 
