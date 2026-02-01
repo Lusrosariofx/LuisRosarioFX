@@ -29,6 +29,14 @@ export interface DailyDirection {
   reasoning: string;
   keyLevels: string[];
   screenshot?: string;
+  outcome?: 'Correct' | 'Incorrect' | 'Invalidated' | 'Pending';
+}
+
+export interface PerformanceReflection {
+  id: string;
+  date: string;
+  content: string;
+  account: string;
 }
 
 export interface Trade {

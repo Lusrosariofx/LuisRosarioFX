@@ -1,6 +1,7 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { MarketType, TradeSide, Trade, TradeMetrics, Account, DailyDirection } from './types';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { MarketType, TradeSide, Trade, TradeMetrics, Account, DailyDirection, PerformanceReflection } from './types';
+import { Language, translations } from './translations';
 import TradeTable from './components/TradeTable';
 import TradeForm from './components/TradeForm';
 import Dashboard from './components/Dashboard';
@@ -36,7 +37,9 @@ import {
   RotateCcw,
   Search,
   LogOut,
-  CloudSun
+  CloudSun,
+  CheckCircle2,
+  Languages
 } from 'lucide-react';
 
 interface UserProfile {
@@ -54,12 +57,20 @@ const App: React.FC = () => {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [accounts, setAccounts] = useState<Account[]>(DEFAULT_ACCOUNTS);
   const [directionHistory, setDirectionHistory] = useState<DailyDirection[]>([]);
+  const [reflections, setReflections] = useState<PerformanceReflection[]>([]);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'journal' | 'analytics' | 'direction'>('dashboard');
   const [showAddForm, setShowAddForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showImageImport, setShowImageImport] = useState(false);
   const [showAddAccount, setShowAddAccount] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [lang, setLang] = useState<Language>(() => {
+    const saved = localStorage.getItem('trade_track_pro_lang');
+    return (saved as Language) || 'en';
+  });
+
+  const t = translations[lang];
+  const isInitialLoadDone = useRef(false);
 
   // Filter States
   const [accountFilter, setAccountFilter] = useState<string | 'ALL'>('ALL');
@@ -68,7 +79,10 @@ const App: React.FC = () => {
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
 
-  // Initial Load - Check for active session
+  useEffect(() => {
+    localStorage.setItem('trade_track_pro_lang', lang);
+  }, [lang]);
+
   useEffect(() => {
     const savedUser = localStorage.getItem('trade_track_pro_active_user');
     if (savedUser) {
@@ -76,12 +90,13 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Persistence & Scoped Data Loading
   useEffect(() => {
     if (!user) {
       setTrades([]);
       setAccounts(DEFAULT_ACCOUNTS);
       setDirectionHistory([]);
+      setReflections([]);
+      isInitialLoadDone.current = false;
       return;
     }
 
@@ -89,43 +104,42 @@ const App: React.FC = () => {
     const savedTrades = localStorage.getItem(`${prefix}_trades`);
     const savedAccounts = localStorage.getItem(`${prefix}_accounts`);
     const savedHistory = localStorage.getItem(`${prefix}_directions`);
+    const savedReflections = localStorage.getItem(`${prefix}_reflections`);
     
-    if (savedTrades) {
-      try { setTrades(JSON.parse(savedTrades)); } catch (e) { console.error(e); }
-    }
-    if (savedAccounts) {
-      try { 
-        const parsedAccounts = JSON.parse(savedAccounts);
-        if (parsedAccounts && parsedAccounts.length > 0) {
-          setAccounts(parsedAccounts);
-        }
-      } catch (e) { console.error(e); }
-    }
-    if (savedHistory) {
-      try { setDirectionHistory(JSON.parse(savedHistory)); } catch (e) { console.error(e); }
-    }
+    const loadedTrades = savedTrades ? JSON.parse(savedTrades) : [];
+    const loadedAccounts = savedAccounts ? JSON.parse(savedAccounts) : DEFAULT_ACCOUNTS;
+    const loadedHistory = savedHistory ? JSON.parse(savedHistory) : [];
+    const loadedReflections = savedReflections ? JSON.parse(savedReflections) : [];
 
+    setTrades(loadedTrades);
+    setAccounts(loadedAccounts.length > 0 ? loadedAccounts : DEFAULT_ACCOUNTS);
+    setDirectionHistory(loadedHistory);
+    setReflections(loadedReflections);
+    
+    isInitialLoadDone.current = true;
     localStorage.setItem('trade_track_pro_active_user', JSON.stringify(user));
   }, [user]);
 
-  // Scoped Data Saving
   useEffect(() => {
-    if (!user) return;
+    if (!user || !isInitialLoadDone.current) return;
     const prefix = `trade_track_pro_${user.username}`;
     localStorage.setItem(`${prefix}_trades`, JSON.stringify(trades));
     localStorage.setItem(`${prefix}_accounts`, JSON.stringify(accounts));
     localStorage.setItem(`${prefix}_directions`, JSON.stringify(directionHistory));
-  }, [trades, accounts, directionHistory, user]);
+    localStorage.setItem(`${prefix}_reflections`, JSON.stringify(reflections));
+  }, [trades, accounts, directionHistory, reflections, user]);
 
   const handleLogin = (newUser: UserProfile) => {
+    isInitialLoadDone.current = false;
     setUser(newUser);
   };
 
   const handleLogout = () => {
-    if (window.confirm("Securely terminate your session? Local vault data will remain on this machine.")) {
+    if (window.confirm(t.secure_logout)) {
       localStorage.removeItem('trade_track_pro_active_user');
       setUser(null);
       setIsSidebarOpen(false);
+      isInitialLoadDone.current = false;
     }
   };
 
@@ -140,21 +154,21 @@ const App: React.FC = () => {
     });
   }, [trades, accountFilter, marketFilter, sideFilter, startDate, endDate]);
 
-  const calculateMetrics = (tradeSet: Trade[]): TradeMetrics => {
-    const totalTrades = tradeSet.length;
+  const metrics = useMemo(() => {
+    const totalTrades = filteredTrades.length;
     if (totalTrades === 0) {
       return {
         totalPnl: 0, winRate: 0, profitFactor: 0, totalTrades: 0,
         winningTrades: 0, losingTrades: 0, avgWin: 0, avgLoss: 0, maxDrawdown: 0
       };
     }
-    const winningTrades = tradeSet.filter(t => t.pnl > 0);
-    const losingTrades = tradeSet.filter(t => t.pnl < 0);
-    const totalPnl = tradeSet.reduce((acc, t) => acc + t.pnl, 0);
+    const winningTrades = filteredTrades.filter(t => t.pnl > 0);
+    const losingTrades = filteredTrades.filter(t => t.pnl < 0);
+    const totalPnl = filteredTrades.reduce((acc, t) => acc + t.pnl, 0);
     const totalWinPnl = winningTrades.reduce((acc, t) => acc + t.pnl, 0);
     const totalLossPnl = Math.abs(losingTrades.reduce((acc, t) => acc + t.pnl, 0));
     let maxEquity = 0; let currentEquity = 0; let maxDD = 0;
-    [...tradeSet].reverse().forEach(t => {
+    [...filteredTrades].reverse().forEach(t => {
       currentEquity += t.pnl;
       if (currentEquity > maxEquity) maxEquity = currentEquity;
       const dd = maxEquity - currentEquity;
@@ -171,9 +185,7 @@ const App: React.FC = () => {
       avgLoss: losingTrades.length > 0 ? totalLossPnl / losingTrades.length : 0,
       maxDrawdown: maxDD
     };
-  };
-
-  const metrics = useMemo(() => calculateMetrics(filteredTrades), [filteredTrades]);
+  }, [filteredTrades]);
 
   const addTrades = (newTrades: Trade | Trade[]) => {
     const tradeArray = Array.isArray(newTrades) ? newTrades : [newTrades];
@@ -197,16 +209,6 @@ const App: React.FC = () => {
     }
   };
 
-  const addDirectionRecord = (record: DailyDirection) => {
-    setDirectionHistory(prev => [record, ...prev]);
-  };
-
-  const deleteDirectionRecord = (id: string) => {
-    if (window.confirm("Remove this direction record from your history?")) {
-      setDirectionHistory(prev => prev.filter(r => r.id !== id));
-    }
-  };
-
   const clearFilters = () => {
     setMarketFilter('ALL');
     setSideFilter('ALL');
@@ -215,40 +217,30 @@ const App: React.FC = () => {
     setAccountFilter('ALL');
   };
 
-  const exportData = () => {
-    const data = { trades, accounts, directionHistory, exportDate: new Date().toISOString() };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `tradetrack_pro_${user?.username}_backup_${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  const handleUpdateDirectionRecord = (updatedRecord: DailyDirection) => {
+    setDirectionHistory(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r));
   };
 
-  const importData = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const data = JSON.parse(event.target?.result as string);
-        if (data.trades && data.accounts) {
-          if (window.confirm("Restore from backup? This will overwrite your current vault data.")) {
-            setTrades(data.trades);
-            setAccounts(data.accounts);
-            if (data.directionHistory) setDirectionHistory(data.directionHistory);
-          }
-        }
-      } catch (err) { alert("Invalid backup file."); }
+  const handleSaveReflection = (content: string, account: string) => {
+    const newReflection: PerformanceReflection = {
+      id: crypto.randomUUID(),
+      date: new Date().toISOString(),
+      content,
+      account
     };
-    reader.readAsText(file);
+    setReflections(prev => [newReflection, ...prev]);
+  };
+
+  const handleDeleteReflection = (id: string) => {
+    setReflections(prev => prev.filter(r => r.id !== id));
+  };
+
+  const toggleLang = () => {
+    setLang(prev => prev === 'en' ? 'es' : 'en');
   };
 
   if (!user) {
-    return <LoginScreen onLogin={handleLogin} />;
+    return <LoginScreen onLogin={handleLogin} currentLang={lang} onLangToggle={toggleLang} />;
   }
 
   return (
@@ -274,7 +266,6 @@ const App: React.FC = () => {
           <p className="text-[9px] font-black tracking-[0.4em] theme-text-s uppercase ml-1 mt-1 opacity-70">DIRECTIONDAY</p>
         </div>
 
-        {/* User Profile Card */}
         <div className="theme-bg-app p-4 rounded-2xl border theme-border flex items-center justify-between group">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl theme-bg-accent flex items-center justify-center text-white font-black text-sm uppercase">
@@ -290,31 +281,31 @@ const App: React.FC = () => {
           <button 
             onClick={handleLogout}
             className="p-2 theme-text-s hover:text-rose-500 transition-colors"
-            title="Secure Logout"
+            title={t.logout}
           >
             <LogOut size={16} />
           </button>
         </div>
 
         <nav className="flex flex-col gap-1">
-          <NavItem active={activeTab === 'dashboard'} onClick={() => { setActiveTab('dashboard'); setIsSidebarOpen(false); }} icon={<LayoutDashboard size={20} />} label="Dashboard" />
-          <NavItem active={activeTab === 'journal'} onClick={() => { setActiveTab('journal'); setIsSidebarOpen(false); }} icon={<NotebookPen size={20} />} label="Journal & AI" />
-          <NavItem active={activeTab === 'direction'} onClick={() => { setActiveTab('direction'); setIsSidebarOpen(false); }} icon={<Zap size={20} />} label="Daily Direction" />
-          <NavItem active={activeTab === 'analytics'} onClick={() => { setActiveTab('analytics'); setIsSidebarOpen(false); }} icon={<BarChart3 size={20} />} label="Performance" />
+          <NavItem active={activeTab === 'dashboard'} onClick={() => { setActiveTab('dashboard'); setIsSidebarOpen(false); }} icon={<LayoutDashboard size={20} />} label={t.dashboard} />
+          <NavItem active={activeTab === 'journal'} onClick={() => { setActiveTab('journal'); setIsSidebarOpen(false); }} icon={<NotebookPen size={20} />} label={t.journal} />
+          <NavItem active={activeTab === 'direction'} onClick={() => { setActiveTab('direction'); setIsSidebarOpen(false); }} icon={<Zap size={20} />} label={t.direction} />
+          <NavItem active={activeTab === 'analytics'} onClick={() => { setActiveTab('analytics'); setIsSidebarOpen(false); }} icon={<BarChart3 size={20} />} label={t.performance} />
         </nav>
 
         <div className="mt-auto space-y-4">
           <div className="theme-bg-app p-4 rounded-xl border theme-border">
             <div className="flex justify-between items-center mb-3">
               <label className="text-[10px] theme-text-s uppercase font-black flex items-center gap-2 tracking-wider">
-                <Filter size={12} /> Accounts
+                <Filter size={12} /> {t.accounts}
               </label>
-              <button onClick={() => setShowAddAccount(true)} className="p-1 hover:bg-white/10 rounded-md theme-accent transition-colors" title="Add New Account">
+              <button onClick={() => setShowAddAccount(true)} className="p-1 hover:bg-white/10 rounded-md theme-accent transition-colors" title="Add">
                 <Plus size={16} />
               </button>
             </div>
-            <div className="flex flex-col gap-1 max-h-[160px] overflow-y-auto custom-scrollbar pr-1">
-              <FilterButton active={accountFilter === 'ALL'} onClick={() => { setAccountFilter('ALL'); setIsSidebarOpen(false); }} label="All Accounts" />
+            <div className="flex flex-col gap-1 max-h-[140px] overflow-y-auto custom-scrollbar pr-1">
+              <FilterButton active={accountFilter === 'ALL'} onClick={() => { setAccountFilter('ALL'); setIsSidebarOpen(false); }} label={t.all_accounts} />
               {accounts.map(acc => (
                 <FilterButton key={acc.id} active={accountFilter === acc.name} onClick={() => { setAccountFilter(acc.name); setIsSidebarOpen(false); }} onDelete={() => deleteAccount(acc.id, acc.name)} label={acc.name} />
               ))}
@@ -322,49 +313,60 @@ const App: React.FC = () => {
           </div>
 
           <div className="flex flex-col gap-2">
-            <p className="text-[9px] font-black theme-text-s uppercase tracking-widest ml-1 mb-1">Smart Tools</p>
+            <p className="text-[9px] font-black theme-text-s uppercase tracking-widest ml-1 mb-1">{t.smart_tools}</p>
             <div className="grid grid-cols-2 gap-2">
               <button onClick={() => { setShowImageImport(true); setIsSidebarOpen(false); }} className="bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 font-bold py-4 rounded-xl flex flex-col items-center justify-center gap-1.5 transition-all group">
                 <Camera size={20} />
-                <span className="text-[10px] uppercase tracking-widest font-black">Analyze</span>
+                <span className="text-[10px] uppercase tracking-widest font-black">{t.analyze}</span>
               </button>
               <button onClick={() => { setShowImport(true); setIsSidebarOpen(false); }} className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/30 font-bold py-4 rounded-xl flex flex-col items-center justify-center gap-1.5 transition-all group">
                 <FileText size={20} />
-                <span className="text-[10px] uppercase tracking-widest font-black">MT5 Sync</span>
+                <span className="text-[10px] uppercase tracking-widest font-black">{t.mt5_sync}</span>
               </button>
             </div>
             <button onClick={() => { setShowAddForm(true); setIsSidebarOpen(false); }} className="w-full theme-bg-accent hover:theme-bg-accent text-white font-bold py-4 px-4 rounded-xl flex items-center justify-center gap-2 transition-all">
               <PlusCircle size={18} />
-              <span className="text-[10px] uppercase tracking-widest font-black">Manual Trade</span>
+              <span className="text-[10px] uppercase tracking-widest font-black">{t.manual_trade}</span>
             </button>
           </div>
 
-          <div className="pt-2 flex items-center justify-between border-t theme-border">
-             <button onClick={exportData} className="text-[10px] theme-text-s hover:theme-accent font-black uppercase tracking-widest flex items-center gap-1.5 transition-colors">
-               <Download size={12} /> Backup
-             </button>
-             <label className="text-[10px] theme-text-s hover:text-amber-500 font-black uppercase tracking-widest flex items-center gap-1.5 cursor-pointer transition-colors">
-               <Database size={12} /> Restore
-               <input type="file" className="hidden" accept=".json" onChange={importData} />
-             </label>
+          <div className="pt-2 flex flex-col gap-3 border-t theme-border">
+             <div className="flex items-center justify-between">
+               <button onClick={toggleLang} className="text-[10px] theme-text-s hover:theme-accent font-black uppercase tracking-widest flex items-center gap-1.5 transition-colors">
+                 <Languages size={12} /> {lang === 'en' ? 'ES' : 'EN'}
+               </button>
+               <div className="flex items-center gap-2 px-1">
+                 <CheckCircle2 size={10} className="text-emerald-500" />
+                 <span className="text-[8px] font-black uppercase tracking-widest theme-text-s">{t.persistence_active}</span>
+               </div>
+             </div>
+             <div className="flex items-center justify-between">
+               <button onClick={() => {}} className="text-[10px] theme-text-s hover:theme-accent font-black uppercase tracking-widest flex items-center gap-1.5 transition-colors">
+                 <Download size={12} /> {t.backup}
+               </button>
+               <label className="text-[10px] theme-text-s hover:text-amber-500 font-black uppercase tracking-widest flex items-center gap-1.5 cursor-pointer transition-colors">
+                 <Database size={12} /> {t.restore}
+                 <input type="file" className="hidden" accept=".json" />
+               </label>
+             </div>
           </div>
         </div>
       </aside>
 
       <main className="flex-1 overflow-y-auto theme-bg-app">
         <div className="max-w-7xl mx-auto p-4 md:p-8 lg:p-12 pb-24">
-          {activeTab === 'dashboard' && <Dashboard metrics={metrics} trades={filteredTrades} allTrades={trades} accounts={accounts} />}
+          {activeTab === 'dashboard' && <Dashboard metrics={metrics} trades={filteredTrades} allTrades={trades} accounts={accounts} lang={lang} />}
           
           {activeTab === 'journal' && (
             <div className="space-y-12">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b theme-border pb-8">
                 <div>
-                  <h2 className="text-3xl font-black uppercase tracking-tight">Trading Journal</h2>
+                  <h2 className="text-3xl font-black uppercase tracking-tight">{t.journal}</h2>
                   <p className="theme-text-s text-sm">Operation "The Sheet" — Full Execution Logs</p>
                 </div>
                 <div className="flex items-center gap-6">
                   <div className="text-right">
-                    <p className="text-[10px] theme-text-s font-black uppercase tracking-widest">Active P/L</p>
+                    <p className="text-[10px] theme-text-s font-black uppercase tracking-widest">{t.active_pnl}</p>
                     <p className={`text-xl font-black font-mono ${metrics.totalPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                       ${metrics.totalPnl.toLocaleString(undefined, {minimumFractionDigits: 2})}
                     </p>
@@ -372,111 +374,78 @@ const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* Journal Filter Bar */}
               <div className="theme-bg-sidebar border theme-border p-4 rounded-[1.5rem] shadow-xl space-y-4">
                 <div className="flex flex-wrap items-center gap-4">
                   <div className="flex-1 min-w-[200px] flex items-center gap-2 theme-bg-app border theme-border px-3 py-2 rounded-xl">
                     <Search size={14} className="theme-text-s" />
-                    <span className="text-[10px] font-black uppercase theme-text-s tracking-widest">Filter Controls</span>
+                    <span className="text-[10px] font-black uppercase theme-text-s tracking-widest">{t.filter_controls}</span>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-4 flex-1">
-                    {/* Market Toggle */}
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-[9px] font-black theme-text-s uppercase tracking-widest ml-1">Market</label>
+                      <label className="text-[9px] font-black theme-text-s uppercase tracking-widest ml-1">{t.market}</label>
                       <div className="flex theme-bg-app border theme-border p-1 rounded-xl">
                         {(['ALL', MarketType.FOREX, MarketType.FUTURES] as const).map(m => (
-                          <button 
-                            key={m} 
-                            onClick={() => setMarketFilter(m)}
-                            className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${marketFilter === m ? 'theme-bg-accent text-white shadow-lg' : 'theme-text-s hover:theme-text-p'}`}
-                          >
-                            {m}
-                          </button>
+                          <button key={m} onClick={() => setMarketFilter(m)} className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${marketFilter === m ? 'theme-bg-accent text-white shadow-lg' : 'theme-text-s hover:theme-text-p'}`}>{m}</button>
                         ))}
                       </div>
                     </div>
-
-                    {/* Side Toggle */}
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-[9px] font-black theme-text-s uppercase tracking-widest ml-1">Direction</label>
+                      <label className="text-[9px] font-black theme-text-s uppercase tracking-widest ml-1">{t.side}</label>
                       <div className="flex theme-bg-app border theme-border p-1 rounded-xl">
                         {(['ALL', TradeSide.LONG, TradeSide.SHORT] as const).map(s => (
-                          <button 
-                            key={s} 
-                            onClick={() => setSideFilter(s)}
-                            className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${sideFilter === s ? 'theme-bg-accent text-white shadow-lg' : 'theme-text-s hover:theme-text-p'}`}
-                          >
-                            {s}
-                          </button>
+                          <button key={s} onClick={() => setSideFilter(s)} className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${sideFilter === s ? 'theme-bg-accent text-white shadow-lg' : 'theme-text-s hover:theme-text-p'}`}>{lang === 'es' ? (s === 'Long' ? 'Largo' : s === 'Short' ? 'Corto' : s) : s}</button>
                         ))}
                       </div>
                     </div>
-
-                    {/* Date Pickers */}
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-[9px] font-black theme-text-s uppercase tracking-widest ml-1">Date Range</label>
+                      <label className="text-[9px] font-black theme-text-s uppercase tracking-widest ml-1">{t.date_range}</label>
                       <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-2 theme-bg-app border theme-border px-3 py-1.5 rounded-xl">
-                          <Calendar size={12} className="theme-text-s" />
-                          <input 
-                            type="date" 
-                            value={startDate}
-                            onChange={(e) => setStartDate(e.target.value)}
-                            className="bg-transparent text-[10px] font-mono font-bold outline-none theme-text-p uppercase cursor-pointer"
-                          />
-                        </div>
-                        <span className="theme-text-s text-[10px] font-black">TO</span>
-                        <div className="flex items-center gap-2 theme-bg-app border theme-border px-3 py-1.5 rounded-xl">
-                          <Calendar size={12} className="theme-text-s" />
-                          <input 
-                            type="date" 
-                            value={endDate}
-                            onChange={(e) => setEndDate(e.target.value)}
-                            className="bg-transparent text-[10px] font-mono font-bold outline-none theme-text-p uppercase cursor-pointer"
-                          />
-                        </div>
+                        <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="theme-bg-app border theme-border px-3 py-1.5 rounded-xl bg-transparent text-[10px] font-mono font-bold outline-none theme-text-p uppercase" />
+                        <span className="theme-text-s text-[10px] font-black">{t.to}</span>
+                        <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="theme-bg-app border theme-border px-3 py-1.5 rounded-xl bg-transparent text-[10px] font-mono font-bold outline-none theme-text-p uppercase" />
                       </div>
                     </div>
-
-                    <button 
-                      onClick={clearFilters}
-                      className="mt-auto mb-1 p-2 bg-white/5 hover:bg-rose-500/10 border theme-border rounded-xl theme-text-s hover:text-rose-500 transition-all flex items-center gap-2"
-                      title="Clear All Filters"
-                    >
-                      <RotateCcw size={14} />
-                    </button>
+                    <button onClick={clearFilters} className="mt-auto mb-1 p-2 bg-white/5 hover:bg-rose-500/10 border theme-border rounded-xl theme-text-s hover:text-rose-500 transition-all"><RotateCcw size={14} /></button>
                   </div>
                 </div>
 
                 <div className="flex justify-between items-center pt-2 border-t theme-border opacity-70">
                   <div className="flex items-center gap-3">
                     <span className="text-[10px] font-black theme-accent uppercase tracking-[0.2em] px-3 py-1 theme-bg-sidebar border theme-border rounded-full">
-                      {filteredTrades.length} Result{filteredTrades.length !== 1 ? 's' : ''} Found
+                      {filteredTrades.length} {t.results_found}
                     </span>
                     {(marketFilter !== 'ALL' || sideFilter !== 'ALL' || startDate || endDate) && (
                       <span className="text-[9px] font-black text-amber-500 uppercase tracking-widest flex items-center gap-1.5">
-                        <Activity size={10} /> Filters Active
+                        <Activity size={10} /> {t.filters_active}
                       </span>
                     )}
                   </div>
                   <div className="text-[9px] font-black theme-text-s uppercase tracking-widest font-mono">
-                    Total Volume: {filteredTrades.reduce((sum, t) => sum + t.size, 0).toFixed(2)} Lots
+                    {t.total_volume}: {filteredTrades.reduce((sum, tr) => sum + tr.size, 0).toFixed(2)} Lots
                   </div>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-2"><AIInsights trades={trades} accounts={accounts} /></div>
-                
+                <div className="lg:col-span-2">
+                  <AIInsights 
+                    trades={trades} 
+                    accounts={accounts} 
+                    reflections={reflections} 
+                    onSaveReflection={handleSaveReflection}
+                    onDeleteReflection={handleDeleteReflection}
+                    lang={lang}
+                  />
+                </div>
                 <div className="theme-bg-sidebar border theme-border p-8 rounded-[2.5rem] flex flex-col gap-6 shadow-xl">
                   <div className="flex items-center gap-2">
                     <Activity className="theme-accent" size={18} />
-                    <h3 className="text-sm font-black uppercase tracking-widest">Accounts Summary</h3>
+                    <h3 className="text-sm font-black uppercase tracking-widest">{t.summary}</h3>
                   </div>
                   <div className="space-y-3 flex-1 overflow-y-auto custom-scrollbar max-h-[300px]">
                     {accounts.map(acc => {
-                      const accPnl = trades.filter(t => t.accountType === acc.name).reduce((sum, t) => sum + t.pnl, 0);
+                      const accPnl = trades.filter(tr => tr.accountType === acc.name).reduce((sum, tr) => sum + tr.pnl, 0);
                       return (
                         <div key={acc.id} className="p-4 theme-bg-app border theme-border rounded-2xl flex justify-between items-center group hover:theme-accent transition-all">
                           <div className="flex items-center gap-3 truncate">
@@ -496,11 +465,11 @@ const App: React.FC = () => {
               <div className="space-y-12">
                 <div className="flex items-center gap-2">
                   <div className="w-1.5 h-6 theme-bg-accent rounded-full" />
-                  <h3 className="text-xl font-black uppercase tracking-tight">The Sheet</h3>
+                  <h3 className="text-xl font-black uppercase tracking-tight">{t.the_sheet}</h3>
                 </div>
                 <TradeCalendar trades={filteredTrades} />
                 <div className="theme-bg-sidebar border theme-border rounded-[2.5rem] p-1 overflow-hidden shadow-2xl">
-                  <TradeTable trades={filteredTrades} onDelete={(id) => setTrades(prev => prev.filter(t => t.id !== id))} accounts={accounts} />
+                  <TradeTable trades={filteredTrades} onDelete={(id) => setTrades(prev => prev.filter(tr => tr.id !== id))} accounts={accounts} />
                 </div>
               </div>
             </div>
@@ -508,9 +477,11 @@ const App: React.FC = () => {
           
           {activeTab === 'direction' && (
             <DirectionAssistant 
-              onSaveRecord={addDirectionRecord} 
+              onSaveRecord={(rec) => setDirectionHistory(prev => [rec, ...prev])} 
               history={directionHistory} 
-              onDeleteRecord={deleteDirectionRecord} 
+              onDeleteRecord={(id) => setDirectionHistory(prev => prev.filter(r => r.id !== id))}
+              onUpdateRecord={handleUpdateDirectionRecord}
+              lang={lang}
             />
           )}
           {activeTab === 'analytics' && <Analytics trades={filteredTrades} />}
@@ -521,16 +492,18 @@ const App: React.FC = () => {
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="theme-bg-sidebar border theme-border rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden">
             <div className="p-6 border-b theme-border flex justify-between items-center theme-bg-app">
-              <h2 className="text-xl font-bold tracking-tight theme-text-p">Log New Trade</h2>
+              <h2 className="text-xl font-bold tracking-tight theme-text-p">{t.log_new_trade}</h2>
               <button onClick={() => setShowAddForm(false)} className="theme-text-s hover:theme-text-p transition-colors"><X size={20} /></button>
             </div>
-            <div className="p-6 overflow-y-auto max-h-[80vh]"><TradeForm onSubmit={addTrades} onCancel={() => setShowAddForm(false)} accounts={accounts} /></div>
+            <div className="p-6 overflow-y-auto max-h-[80vh]">
+              <TradeForm onSubmit={addTrades} onCancel={() => setShowAddForm(false)} accounts={accounts} lang={lang} />
+            </div>
           </div>
         </div>
       )}
       {showImport && <ImportModal onImport={addTrades} onClose={() => setShowImport(false)} accounts={accounts} />}
       {showImageImport && <ImageImportModal onImport={addTrades} onClose={() => setShowImageImport(false)} accounts={accounts} existingTrades={trades} />}
-      {showAddAccount && <AddAccountModal onAdd(name, type) onClose={() => setShowAddAccount(false)} />}
+      {showAddAccount && <AddAccountModal onAdd={addAccount} onClose={() => setShowAddAccount(false)} />}
     </div>
   );
 };
